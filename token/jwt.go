@@ -1,8 +1,15 @@
 package token
 
 import (
+	"crypto/rsa"
+	"crypto/x509"
+	"encoding/pem"
 	"fmt"
+	"io"
+	"os"
+	"strings"
 
+	"github.com/civiledcode/grxm-iam/config"
 	"github.com/golang-jwt/jwt/v5"
 )
 
@@ -12,30 +19,37 @@ import (
 type JWTSource struct {
 	// signingMethod is the algorithm to use, e.g., jwt.SigningMethodHS256.
 	signingMethod jwt.SigningMethod
-	// signingKey is the key used for signing tokens (e.g., []byte or *rsa.PrivateKey).
-	signingKey any
-	// validationKey is the key used for parsing and validating tokens (e.g., []byte or *rsa.PublicKey).
-	validationKey any
+	// signingKey is the key used for signing tokens.
+	signingKey *rsa.PrivateKey
+	// validationKey is the key used for parsing and validating tokens.
+	validationKey *rsa.PublicKey
 	// claims holds the key-value pairs that make up the JWT payload.
 	claims jwt.MapClaims
-}
-
-// NewJWTSource creates a new JWTSource configured for a specific signing method and keys.
-//
-// For symmetric algorithms (e.g., HS256), signingKey and validationKey will be the same []byte slice.
-// For asymmetric algorithms (e.g., RS256), signingKey should be the private key (*rsa.PrivateKey)
-// and validationKey should be the corresponding public key (*rsa.PublicKey).
-func NewJWTSource(method jwt.SigningMethod, signingKey, validationKey any) *JWTSource {
-	return &JWTSource{
-		signingMethod: method,
-		signingKey:    signingKey,
-		validationKey: validationKey,
-	}
+	// bitSize is the amount of bits each key is.
+	bitSize int
 }
 
 // New creates a new, empty JWTSource that inherits the key and method configuration.
 // This allows a configured instance to be used as a factory for building or parsing tokens.
-func (j *JWTSource) New() TokenSource {
+func (j *JWTSource) New(c *config.IAMConfig) TokenSource {
+	if c != nil {
+		j.bitSize = int(c.Token["bitsize"].(float64))
+		var signingMethod jwt.SigningMethod
+		switch strings.ToUpper(c.Token["signing_method"].(string)) {
+		// TODO: Add more
+		case "RS256":
+			signingMethod = jwt.SigningMethodRS256
+		case "RS384":
+			signingMethod = jwt.SigningMethodRS384
+		case "RS512":
+			signingMethod = jwt.SigningMethodRS512
+		default:
+			panic("invalid signing method for JWT")
+		}
+		j.signingMethod = signingMethod
+		return j
+	}
+
 	return &JWTSource{
 		signingMethod: j.signingMethod,
 		signingKey:    j.signingKey,
@@ -120,4 +134,99 @@ func (j *JWTSource) Parse(tokenString string) error {
 
 	j.claims = claims
 	return nil
+}
+
+// Save marshals the RSA private key to the PEM format and writes it to a file.
+// It ensures the key file is saved with restricted permissions (read/write for owner only).
+func (j *JWTSource) Save(filePath string) error {
+	if j.signingKey == nil {
+		return fmt.Errorf("signing key is not available to save")
+	}
+
+	// Marshal the RSA private key into PKCS#1, ASN.1 DER format.
+	derBytes := x509.MarshalPKCS1PrivateKey(j.signingKey)
+
+	// Create a PEM block to hold the DER-encoded key.
+	pemBlock := &pem.Block{
+		Type:  "RSA PRIVATE KEY",
+		Bytes: derBytes,
+	}
+
+	// Write the PEM-encoded data to the specified file.
+	// The file permission 0600 restricts access to the file owner.
+	err := os.WriteFile(filePath, pem.EncodeToMemory(pemBlock), 0600)
+	if err != nil {
+		return fmt.Errorf("failed to write key to file %s: %w", filePath, err)
+	}
+
+	if j.signingKey == nil {
+		return fmt.Errorf("signing key is not available to save")
+	}
+
+	// Marshal the RSA private key into PKCS#1, ASN.1 DER format.
+	derBytes = x509.MarshalPKCS1PublicKey(j.validationKey)
+
+	// Create a PEM block to hold the DER-encoded key.
+	pemBlock = &pem.Block{
+		Type:  "RSA PUBLIC KEY",
+		Bytes: derBytes,
+	}
+
+	// Write the PEM-encoded data to the specified file.
+	// The file permission 0600 restricts access to the file owner.
+	err = os.WriteFile(filePath+".pub", pem.EncodeToMemory(pemBlock), 0600)
+	if err != nil {
+		return fmt.Errorf("failed to write key to file %s: %w", filePath, err)
+	}
+
+	return nil
+}
+
+// Load reads a PEM-encoded RSA private key from a file, parses it,
+// and sets the signing and validation keys for the JWTSource.
+func (j *JWTSource) Load(filePath string) error {
+	// Read the entire PEM-encoded file.
+	pemBytes, err := os.ReadFile(filePath)
+	if err != nil {
+		return fmt.Errorf("failed to read key from file %s: %w", filePath, err)
+	}
+
+	// Decode the PEM block from the file content.
+	block, _ := pem.Decode(pemBytes)
+	if block == nil {
+		return fmt.Errorf("failed to decode PEM block from %s", filePath)
+	}
+
+	// Parse the DER-encoded private key from the PEM block.
+	privateKey, err := x509.ParsePKCS1PrivateKey(block.Bytes)
+	if err != nil {
+		return fmt.Errorf("failed to parse DER encoded private key: %w", err)
+	}
+
+	// Set the signing and validation keys on the JWTSource instance.
+	j.signingKey = privateKey
+	j.validationKey = &privateKey.PublicKey
+
+	return nil
+}
+
+// Random generates a new RSA private/public key pair.
+// This function is included from your original prompt for context.
+func (j *JWTSource) Random(randSrc io.Reader) error {
+	privateKey, err := rsa.GenerateKey(randSrc, j.bitSize)
+	if err != nil {
+		return fmt.Errorf("failed to generate RSA key: %v", err)
+	}
+
+	j.signingKey = privateKey
+	j.validationKey = &privateKey.PublicKey
+	return nil
+}
+
+func (j *JWTSource) NameMatches(name string) bool {
+	if name == "jwt" || name == "json" {
+		return true
+	}
+
+	return false
 }
