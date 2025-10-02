@@ -1,0 +1,25 @@
+{
+    "id": {
+        "type": "uid",
+        "length": "32"
+    },
+    "token": {
+        "type": "jwt",
+        "bitsize": 4096,
+        "signing_method": "RS256",
+        "key_path": "./keys/from-conf"
+    },
+    "auth_methods": {
+        "emailpass": {
+
+        },
+        "userpass": {
+
+        }
+    },
+    "register_methods": {
+        "emailpass": {
+            
+        }
+    }
+}
