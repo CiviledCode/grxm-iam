@@ -30,20 +30,22 @@ type TokenSource interface {
 	Random(io.Reader) error
 	// Determines if a given name matches that used by this token source. The inputted name will be lowercase.
 	NameMatches(string) bool
+	// PublicKeyPEM returns the public key in PEM format.
+	PublicKeyPEM() (string, error)
 }
 
 func GetTokenSource(conf *config.IAMConfig) TokenSource {
 	var src TokenSource
 
 	for _, s := range RegisteredSources {
-		if s.NameMatches(conf.Token["type"].(string)) {
+		if s.NameMatches(conf.Token.Type) {
 			src = s
 		}
 	}
 
 	src.New(conf)
 
-	keyFilepath := conf.Token["key_path"].(string)
+	keyFilepath := conf.Token.KeyPath
 	if err := src.Load(keyFilepath); err != nil {
 		if err := src.Random(rand.Reader); err != nil {
 			panic(err)

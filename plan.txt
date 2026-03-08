@@ -1,0 +1,44 @@
+# grxm-iam: Implementation Plan
+
+## 1. Architecture Overview
+**Goal:** A drop-in, zero-trust authentication handler acting as a centralized bearer authority. 
+Consumer applications will rely entirely on this service for authentication and authorization (via tokens) without ever storing or handling sensitive Personally Identifiable Information (PII) in their own databases. This severely reduces the attack surface for connected applications.
+
+## 2. Configuration (`config` package)
+The system will be entirely driven by `config.json`.
+*   **Authority Settings:** A dedicated secure password/token defined in the config to authenticate incoming WebSocket connections from administrative authorities.
+*   **Modular Auth Methods:** Toggles and settings for various login/registration methods (e.g., Email/Password, SMS OTP, OAuth).
+*   **Database Settings:** Connection URI and database selection.
+
+## 3. Database Modularity (`db` package)
+The database layer will be abstracted to support any document-based database, maximizing modularity.
+*   **Interfaces:** Define core interfaces (e.g., `UserRepository`, `SessionRepository`) for CRUD operations on users, roles, and sessions.
+*   **MongoDB Implementation:** Create the primary implementation using the official Go MongoDB driver.
+*   **Data Isolation:** Ensure PII (email, phone number, password hashes) is strictly managed by this layer and never leaked in token payloads unless explicitly required and scoped.
+
+## 4. Modular Authentication Methods (`auth` package)
+Refine the existing `LoginMethod` and `RegisterMethod` interfaces.
+*   Methods (e.g., `RegisterEmail`, `sms-password`) will be dynamically loaded/enabled based on `config.json`.
+*   Each method will utilize the generic `field` validation system to sanitize inputs before interacting with the `db` package.
+
+## 5. Authority WebSockets (`authority` package - *New*)
+A real-time administrative interface.
+*   **Authentication:** Requires the authority password defined in `config.json` to establish a connection.
+*   **Capabilities:** 
+    *   Ban/Unban users immediately.
+    *   Change user roles/permissions.
+    *   Invalidate active sessions globally.
+    *   Stream live authentication events (optional/future).
+
+## 6. Token Management (`token` package)
+Manage the lifecycle of bearer tokens (JWTs).
+*   Issue tokens upon successful modular login.
+*   Tokens will contain non-PII identifiers (UUIDs) and authorization scopes/roles.
+*   Provide an endpoint or library for consumer applications to verify the authenticity and validity of these tokens.
+
+## 7. Implementation Roadmap
+1.  **Phase 1: Data Layer:** Define the `db` package interfaces and build the MongoDB implementation. Define the core `User` struct including roles and ban status.
+2.  **Phase 2: Authority WebSockets:** Create the `authority` package, implement the WebSocket server, and secure it using the config password. Add basic commands (Ban/Role change).
+3.  **Phase 3: Auth Methods:** Complete the implementation of the core auth methods (e.g., Email/Password) tying them into the new `db` layer.
+4.  **Phase 4: Tokenization & APIs:** Ensure successful logins return standard bearer tokens. Build the public-facing HTTP API for login/register and token verification.
+5.  **Phase 5: Refinement:** Finalize `config.json` parsing and ensure all modules tie together seamlessly in `main.go`.

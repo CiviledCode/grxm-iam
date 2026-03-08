@@ -1,0 +1,32 @@
+# Changes Made in Current Session
+
+## 1. Project Planning
+*   Analyzed the existing codebase to understand its capabilities (configuration, tokens, fields, auth interfaces).
+*   Created `plan.txt` detailing the implementation strategy for a drop-in zero-trust authentication handler, focusing on a modular DB layer (MongoDB), an Authority WebSocket server, dynamic Auth Methods, and a Token verification layer.
+
+## 2. API Server (Stage 1)
+*   **Created `api/server.go`**: Implemented a dynamic HTTP server to handle `POST /api/v1/login` and `POST /api/v1/register` endpoints.
+*   **Routing Logic**: Designed the server to read the incoming JSON payload's `type` field and route the request to the dynamically registered authentication or registration handlers.
+*   **Configuration Integration**: Added `ServerConfig` (`host`, `port`) to `config/config.go` and `config.json` (defaults to `0.0.0.0:8080`).
+*   **Entrypoint Refactor**: Rewrote `main.go` to instantiate the new API server, automatically register the authentication methods, and start listening, replacing the previous temporary token test script.
+
+## 3. Authority WebSockets (Stage 2)
+*   **Created `authority/server.go`**: Implemented a secure WebSocket server intended for real-time administrative actions (banning users, changing roles) without relying on heavy third-party frameworks to minimize supply chain risks (used `golang.org/x/net/websocket`).
+*   **Authentication**: Secured the connection requiring `Authorization: Bearer <password>` or a `?auth=<password>` query parameter.
+*   **Configuration Integration**: Added `AuthorityConfig` to `config/config.go` and `config.json` containing the access `password` and `path`.
+*   **Mounting**: Mounted the WebSocket server into the main API router in `api/server.go`.
+
+## 4. Object-Oriented Auth Methods & Validation (Stage 3)
+*   **Field Validation Blocks (`field` package)**: Created independent, self-contained input field structs (`EmailInputField`, `PasswordInputField`, `SMSInputField`, `UsernameInputField`) with their own validation rules (regex, character checks, etc.).
+*   **Auth Composition (`auth/base.go`)**: Designed an abstract `BaseAuthMethod` object. This acts as a blueprint, allowing an auth method to be constructed by passing in an array of `InputFields` and an optional `VerificationField` (for 2FA/verification steps). It includes a unified `ValidateInputs` method that automatically runs validation for all attached fields.
+*   **Concrete Implementations (`auth/methods.go`)**: Implemented the requested concrete methods:
+    *   `email-password` (Login & Register)
+    *   `sms-password` (Login & Register)
+    *   `username-password` (Login & Register)
+*   **Routing Update**: Modified `api/server.go` and the `AuthRequest` struct to use `string` identifiers (e.g., `"email-password"`) rather than `int` IDs for routing, significantly improving client application integration.
+*   **Config Location Override**: Added support for the `IAM_CONFIG_LOCATION` environment variable to specify the path to `config.json`, falling back to `./config.json` if not set.
+*   **Health Check Endpoint**: Implemented `GET /health` to monitor service and MongoDB connectivity.
+*   **Role Management**: Added `default_role` config property for automatic assignment on registration.
+*   **Token Claims**: Successfully injected the user's `roles` array into the generated JWT payload, eliminating the need for consumer apps to lookup user permissions.
+*   **Authority Operations**: Implemented `role_add` and `role_delete` websocket commands using MongoDB `$addToSet` and `$pull` operators for granular role modification.
+*   **Cleanup**: Removed obsolete implementations (`auth/all.go`, `auth/register_email.go`) and wired the new default methods into `main.go`.

@@ -33,9 +33,9 @@ type JWTSource struct {
 // This allows a configured instance to be used as a factory for building or parsing tokens.
 func (j *JWTSource) New(c *config.IAMConfig) TokenSource {
 	if c != nil {
-		j.bitSize = int(c.Token["bitsize"].(float64))
+		j.bitSize = c.Token.Bits
 		var signingMethod jwt.SigningMethod
-		switch strings.ToUpper(c.Token["signing_method"].(string)) {
+		switch strings.ToUpper(c.Token.Algorithm) {
 		// TODO: Add more
 		case "RS256":
 			signingMethod = jwt.SigningMethodRS256
@@ -44,7 +44,7 @@ func (j *JWTSource) New(c *config.IAMConfig) TokenSource {
 		case "RS512":
 			signingMethod = jwt.SigningMethodRS512
 		default:
-			panic("invalid signing method for JWT")
+			panic("invalid signing method for JWT token source")
 		}
 		j.signingMethod = signingMethod
 		return j
@@ -229,4 +229,22 @@ func (j *JWTSource) NameMatches(name string) bool {
 	}
 
 	return false
+}
+
+func (j *JWTSource) PublicKeyPEM() (string, error) {
+	if j.validationKey == nil {
+		return "", fmt.Errorf("public key not loaded")
+	}
+
+	derBytes, err := x509.MarshalPKIXPublicKey(j.validationKey)
+	if err != nil {
+		return "", err
+	}
+
+	pemBlock := &pem.Block{
+		Type:  "PUBLIC KEY",
+		Bytes: derBytes,
+	}
+
+	return string(pem.EncodeToMemory(pemBlock)), nil
 }

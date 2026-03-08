@@ -1,25 +1,54 @@
 {
+    "server": {
+        "host": "0.0.0.0",
+        "port": 8080
+    },
+    "database": {
+        "uri": "mongodb://localhost:27017",
+        "database": "grxm_iam"
+    },
+    "authority": {
+        "password": "change-this-in-production-123",
+        "path": "/api/v1/authority"
+    },
+    "default_role": "user",
     "id": {
         "type": "uid",
-        "length": "32"
+        "length": 32,
+        "charset": "ABCDEFGHIJKLMNOPQRSTUVWXYZ1234567890"
     },
     "token": {
         "type": "jwt",
-        "bitsize": 4096,
-        "signing_method": "RS256",
-        "key_path": "./keys/from-conf"
+        "bits": 2048,
+        "algorithm": "RS256",
+        "key_path": "./keys/newest"
+    },
+    "email": {
+        "username_min_length": 3,
+        "username_max_length": 50,
+        "username_charlist": "abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ1234567890.-_",
+        "domain_min_length": 4,
+        "domain_max_length": 50,
+        "domain_charlist": "abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ1234567890.-_",
+        "domain_whitelist": [],
+        "domain_blacklist": []
+    },
+    "password": {
+
+    },
+    "sms": {
+
     },
     "auth_methods": {
-        "emailpass": {
-
+        "email-password": {
+            "verify": true
         },
-        "userpass": {
-
-        }
-    },
-    "register_methods": {
-        "emailpass": {
-            
+        "sms-password": {
+            "verify": true  
+        },
+        "username-password": {
+            "verify": true,
+            "verify_sources": ["email", "sms"]
         }
     }
 }

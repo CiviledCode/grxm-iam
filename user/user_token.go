@@ -9,11 +9,13 @@ import (
 const (
 	USER_ID         = "uid"
 	EXPIRATION_TIME = "exp"
+	ROLES           = "roles"
 )
 
 // UserToken is the application-specific data model for a user's token.
 type UserToken struct {
 	UserID         string
+	Roles          []string
 	ExpirationUnix int64
 }
 
@@ -24,6 +26,9 @@ func ToToken(src token.TokenSource, u *UserToken) (string, error) {
 		return "", err
 	}
 	if err := builder.Set(EXPIRATION_TIME, u.ExpirationUnix); err != nil {
+		return "", err
+	}
+	if err := builder.Set(ROLES, u.Roles); err != nil {
 		return "", err
 	}
 	return builder.Build()
@@ -58,8 +63,21 @@ func FromToken(src token.TokenSource, token string) (*UserToken, error) {
 		return nil, fmt.Errorf("expiration time claim is not a number")
 	}
 
+	rolesClaim, err := parser.Get(ROLES)
+	var roleList []string
+	if err == nil {
+		if rolesArr, ok := rolesClaim.([]any); ok {
+			for _, r := range rolesArr {
+				if rStr, ok := r.(string); ok {
+					roleList = append(roleList, rStr)
+				}
+			}
+		}
+	}
+
 	return &UserToken{
 		UserID:         uidStr,
+		Roles:          roleList,
 		ExpirationUnix: int64(expFloat),
 	}, nil
 }
