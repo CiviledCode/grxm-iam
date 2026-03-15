@@ -7,6 +7,12 @@
         "uri": "mongodb://localhost:27017",
         "database": "grxm_iam"
     },
+    "keystore": {
+        "host": "localhost",
+        "port": 6379,
+        "password": "",
+        "db": 0
+    },
     "authority": {
         "password": "change-this-in-production-123",
         "path": "/api/v1/authority"
@@ -21,7 +27,10 @@
         "type": "jwt",
         "bits": 2048,
         "algorithm": "RS256",
-        "key_path": "./keys/newest"
+        "key_path": "./keys/newest",
+        "expiration_hours": 24,
+        "refresh_max_hours": 168,
+        "cookie_name": "grxm_token"
     },
     "email": {
         "username_min_length": 3,

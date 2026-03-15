@@ -12,10 +12,13 @@ type IDConfig struct {
 }
 
 type TokenConfig struct {
-	Type      string `json:"type"`
-	Algorithm string `json:"algorithm"`
-	Bits      int    `json:"bits"`
-	KeyPath   string `json:"key_path"`
+	Type            string `json:"type"`
+	Algorithm       string `json:"algorithm"`
+	Bits            int    `json:"bits"`
+	KeyPath         string `json:"key_path"`
+	ExpirationHours int    `json:"expiration_hours"`
+	RefreshMaxHours int    `json:"refresh_max_hours"`
+	CookieName      string `json:"cookie_name"`
 }
 
 type EmailConfig struct {
@@ -39,6 +42,13 @@ type AuthorityConfig struct {
 	Path     string `json:"path"`
 }
 
+type KeystoreConfig struct {
+	Host     string `json:"host"`
+	Port     int    `json:"port"`
+	Password string `json:"password"`
+	DB       int    `json:"db"`
+}
+
 type DatabaseConfig struct {
 	URI      string `json:"uri"`
 	Database string `json:"database"`
@@ -52,6 +62,7 @@ type ServerConfig struct {
 type IAMConfig struct {
 	Server      ServerConfig    `json:"server"`
 	Database    DatabaseConfig  `json:"database"`
+	Keystore    KeystoreConfig  `json:"keystore"`
 	Authority   AuthorityConfig `json:"authority"`
 	DefaultRole string          `json:"default_role"`
 	ID          IDConfig        `json:"id"`

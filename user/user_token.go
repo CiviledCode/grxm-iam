@@ -7,16 +7,18 @@ import (
 )
 
 const (
-	USER_ID         = "uid"
-	EXPIRATION_TIME = "exp"
-	ROLES           = "roles"
+	USER_ID          = "uid"
+	EXPIRATION_TIME  = "exp"
+	ROLES            = "roles"
+	REFRESH_DEADLINE = "refresh_deadline"
 )
 
 // UserToken is the application-specific data model for a user's token.
 type UserToken struct {
-	UserID         string
-	Roles          []string
-	ExpirationUnix int64
+	UserID              string
+	Roles               []string
+	ExpirationUnix      int64
+	RefreshDeadlineUnix int64
 }
 
 // ToToken populates a TokenSource with claims from a UserToken struct and builds the token string.
@@ -26,6 +28,9 @@ func ToToken(src token.TokenSource, u *UserToken) (string, error) {
 		return "", err
 	}
 	if err := builder.Set(EXPIRATION_TIME, u.ExpirationUnix); err != nil {
+		return "", err
+	}
+	if err := builder.Set(REFRESH_DEADLINE, u.RefreshDeadlineUnix); err != nil {
 		return "", err
 	}
 	if err := builder.Set(ROLES, u.Roles); err != nil {
@@ -63,6 +68,15 @@ func FromToken(src token.TokenSource, token string) (*UserToken, error) {
 		return nil, fmt.Errorf("expiration time claim is not a number")
 	}
 
+	refClaim, err := parser.Get(REFRESH_DEADLINE)
+	if err != nil {
+		return nil, fmt.Errorf("error getting refresh deadline: %w", err)
+	}
+	refFloat, ok := refClaim.(float64)
+	if !ok {
+		return nil, fmt.Errorf("refresh deadline claim is not a number")
+	}
+
 	rolesClaim, err := parser.Get(ROLES)
 	var roleList []string
 	if err == nil {
@@ -76,8 +90,9 @@ func FromToken(src token.TokenSource, token string) (*UserToken, error) {
 	}
 
 	return &UserToken{
-		UserID:         uidStr,
-		Roles:          roleList,
-		ExpirationUnix: int64(expFloat),
+		UserID:              uidStr,
+		Roles:               roleList,
+		ExpirationUnix:      int64(expFloat),
+		RefreshDeadlineUnix: int64(refFloat),
 	}, nil
 }

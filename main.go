@@ -10,6 +10,7 @@ import (
 	"github.com/civiledcode/grxm-iam/auth"
 	"github.com/civiledcode/grxm-iam/config"
 	"github.com/civiledcode/grxm-iam/db"
+	"github.com/civiledcode/grxm-iam/keystore"
 	"github.com/civiledcode/grxm-iam/token"
 	"go.mongodb.org/mongo-driver/v2/mongo"
 	"go.mongodb.org/mongo-driver/v2/mongo/options"
@@ -42,13 +43,25 @@ func main() {
 	database := mongoClient.Database(conf.Database.Database)
 	userRepo := db.NewMongoUserRepository(database)
 
+	var ks keystore.Store
+	if conf.Keystore.Host != "" {
+		ks = keystore.NewRedisStore(
+			conf.Keystore.Host,
+			conf.Keystore.Port,
+			conf.Keystore.Password,
+			conf.Keystore.DB,
+		)
+		defer ks.Close()
+		slog.Info("Initialized Redis Keystore")
+	}
+
 	tokenSource := token.GetTokenSource(conf)
 	if tokenSource == nil {
 		slog.Error("Failed to initialize token source")
 		os.Exit(1)
 	}
 
-	server := api.NewServer(conf, tokenSource, userRepo)
+	server := api.NewServer(conf, tokenSource, userRepo, ks)
 
 	for _, method := range auth.DefaultRegistrationMethods {
 		server.RegisterRegisterMethod(method)

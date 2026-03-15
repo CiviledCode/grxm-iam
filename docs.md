@@ -13,6 +13,24 @@ Instead, when a user successfully authenticates through `grxm-iam`, the service 
 ### Decentralized Token Verification
 Consumer applications validate the authenticity and integrity of the JWT cryptographically using the IAM service's **public key**. Because the token signature guarantees it was minted by the IAM service, your APIs can instantly verify a user's identity and roles without needing to make network requests or query the central IAM database for every single API call.
 
+#### Recommended Token Refresh Flow (Client-Side Orchestration)
+To maintain the performance benefits of zero-trust verification while keeping sessions secure, consumer APIs must handle token expiration locally and rely on the frontend application to orchestrate token refreshes:
+
+1.  **Local Verification:** Your consumer API receives a request with the JWT (typically in a cookie). It uses the IAM public key to verify the signature and checks the `exp` (expiration) claim locally.
+2.  **Reject Expired Tokens:** If the token is expired, the consumer API **must instantly reject** the request with a `401 Unauthorized` status code. It should **not** attempt to contact the IAM service.
+3.  **Frontend Intercept:** The frontend application (e.g., React, Vue) should globally intercept all `401` responses from your consumer APIs.
+4.  **The Refresh Attempt:** Upon receiving a `401`, the frontend automatically makes a background request to the IAM service's `POST /api/v1/refresh-token` endpoint.
+    *   **Success:** The IAM service issues a new `HttpOnly` cookie. The frontend should then automatically retry the original API request that failed.
+    *   **Failure:** If the refresh fails (e.g., the absolute refresh deadline has passed, or the user was banned), the frontend should save the user's current route/state and redirect them to the login page. After a successful login, it should redirect them back to where they were.
+
+### High-Speed Session Invalidation (Redis Denylist)
+While decentralized verification is extremely fast, it creates a window where a banned user's token remains mathematically valid until its `exp` claim passes.
+To solve this, `grxm-iam` supports a high-speed Redis Denylist:
+1. When an administrator bans a user via the Authority API, the `user_id` is immediately added to the Redis keystore.
+2. The TTL (Time-To-Live) of this Redis record is automatically set to match the maximum lifetime of a standard token (e.g., 24 hours).
+3. Consumer APIs can query this Redis instance on every request. This is vastly faster than querying MongoDB. If the `user_id` is present in Redis, the API instantly rejects the token, overriding its mathematical validity.
+4. Once the token naturally expires, the Redis record is automatically deleted, keeping the memory footprint minimal.
+
 ### Object-Oriented Auth Methods
 Authentication and registration are handled via dynamic "methods" requested in the JSON payload. Methods are built like blocks (e.g., combining an `EmailField` and `PasswordField` creates the `"email-password"` method).
 
@@ -37,6 +55,12 @@ This documentation is crucial for orchestration (e.g., creating `docker-compose.
     "database": {
         "uri": "mongodb://localhost:27017", // The MongoDB connection string. In Docker Compose, this would be e.g., "mongodb://mongo:27017"
         "database": "grxm_iam"      // The specific MongoDB database to use.
+    },
+    "keystore": {
+        "host": "localhost",        // The Redis server host. Used for the high-speed token denylist.
+        "port": 6379,               // The Redis server port.
+        "password": "",             // The Redis server password (if any).
+        "db": 0                     // The Redis database index to use.
     },
     "authority": {
         "password": "change-this-in-production-123", // The critical master password required to access the WebSocket API.
@@ -127,7 +151,7 @@ Creates a new user account in the MongoDB database. The submitted password will 
 ```json
 {
   "success": true,
-  "token": "eyJhbGciOiJSUzI1NiIsInR5cCI6IkpXVCJ9.eyJleHAiOjE2...etc" // The signed JWT bearer token.
+  "message": "Authentication successful" // The token is set securely via an HttpOnly cookie.
 }
 ```
 
@@ -157,7 +181,7 @@ Authenticates an existing user and issues a bearer token. This endpoint queries 
 ```json
 {
   "success": true,
-  "token": "eyJhbGciOiJSUzI1NiIsInR5cCI6IkpXVCJ9.eyJleHAiOjE2...etc" // The signed JWT bearer token.
+  "message": "Authentication successful" // The token is set securely via an HttpOnly cookie.
 }
 ```
 

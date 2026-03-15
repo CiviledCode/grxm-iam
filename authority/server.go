@@ -8,20 +8,22 @@ import (
 
 	"github.com/civiledcode/grxm-iam/config"
 	"github.com/civiledcode/grxm-iam/db"
+	"github.com/civiledcode/grxm-iam/keystore"
 	"github.com/civiledcode/grxm-iam/token"
 	"golang.org/x/net/websocket"
 )
 
 // Server handles authority-level commands via WebSocket.
 type Server struct {
-	config *config.IAMConfig
-	repo   db.UserRepository
-	ts     token.TokenSource
+	config   *config.IAMConfig
+	repo     db.UserRepository
+	ts       token.TokenSource
+	keyStore keystore.Store
 }
 
 // NewServer creates a new authority server instance.
-func NewServer(cfg *config.IAMConfig, repo db.UserRepository, ts token.TokenSource) *Server {
-	return &Server{config: cfg, repo: repo, ts: ts}
+func NewServer(cfg *config.IAMConfig, repo db.UserRepository, ts token.TokenSource, ks keystore.Store) *Server {
+	return &Server{config: cfg, repo: repo, ts: ts, keyStore: ks}
 }
 
 // Command represents an incoming WebSocket message from an authority.
@@ -98,6 +100,17 @@ func (s *Server) Handler() websocket.Handler {
 						slog.Error("Failed to ban user", "error", err)
 						resp = Response{Success: false, Message: "failed to ban user: " + err.Error()}
 					} else {
+						// Immediately insert into Redis blocklist for the duration of a standard token's lifetime.
+						if s.keyStore != nil {
+							expHours := s.config.Token.ExpirationHours
+							if expHours == 0 {
+								expHours = 24
+							}
+							if err := s.keyStore.BanUser(ctx, payload.UserID, time.Hour*time.Duration(expHours)); err != nil {
+								slog.Error("Failed to update keystore blocklist for ban", "error", err)
+								// Note: We still return success as the DB operation succeeded, but log the error.
+							}
+						}
 						resp = Response{Success: true, Message: "User banned successfully"}
 					}
 				}
@@ -113,6 +126,12 @@ func (s *Server) Handler() websocket.Handler {
 						slog.Error("Failed to unban user", "error", err)
 						resp = Response{Success: false, Message: "failed to unban user: " + err.Error()}
 					} else {
+						// Remove from Redis blocklist if present.
+						if s.keyStore != nil {
+							if err := s.keyStore.UnbanUser(ctx, payload.UserID); err != nil {
+								slog.Error("Failed to update keystore blocklist for unban", "error", err)
+							}
+						}
 						resp = Response{Success: true, Message: "User unbanned successfully"}
 					}
 				}
